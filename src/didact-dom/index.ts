@@ -1,20 +1,18 @@
 import * as Didact from '../didact';
+import Worker from './worker';
 
+const worker = new Worker()
 export function render(element: Didact.Element, container: Node) {
-    const isTextElement = element.type === Didact.TEXT_ELEMENT;
-    const node = isTextElement
-        ? document.createTextNode('')
-        : document.createElement(element.type);
-
-    Object.keys(element.props)
-        .filter((key) => key !== 'children')
-        .forEach((name) => {
-            node[name] = element.props[name]
-        });
-
-    element.props.children.forEach((child) => render(child, node));
-
-    container.appendChild(node);
+    worker.setNextFiber({
+        dom: container,
+        type: element.type,
+        parent: null,
+        child: null,
+        sibling: null,
+        props: {
+            children: [element]
+        }
+    });
 }
 
 export default {

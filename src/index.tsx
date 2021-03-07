@@ -3,8 +3,8 @@ import DidactDOM from './didact-dom';
 
 const element = (
     <div id="foo">
-        <a>bar</a>
-        <b />
+        <a>foo</a>
+        <b>bar</b>
     </div>
 );
 console.log(element);
