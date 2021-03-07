@@ -1,12 +1,19 @@
 import * as Didact from '../didact';
 
-export function render(element: Didact.Element, container: HTMLElement) {
-    const node = document.createElement(element.type);
-    node.title = element.props.title;
-    const text = document.createTextNode("");
-    text.nodeValue = element.props.children;
+export function render(element: Didact.Element, container: Node) {
+    const isTextElement = element.type === Didact.TEXT_ELEMENT;
+    const node = isTextElement
+        ? document.createTextNode('')
+        : document.createElement(element.type);
 
-    node.appendChild(text);
+    Object.keys(element.props)
+        .filter((key) => key !== 'children')
+        .forEach((name) => {
+            node[name] = element.props[name]
+        });
+
+    element.props.children.forEach((child) => render(child, node));
+
     container.appendChild(node);
 }
 
