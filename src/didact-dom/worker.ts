@@ -2,26 +2,24 @@ import * as Didact from "../didact";
 import {RequestIdleCallbackDeadline} from "../didact/types-polyfill";
 
 
-export interface Fiber {
+export interface Fiber extends Didact.Element {
     dom: Node | null;
     parent: Fiber | null;
     child: Fiber | null;
     sibling: Fiber | null;
-    type: string;
-    props: {
-        children: Didact.Element[];
-        [key: string]: any;
-    };
 }
 
 class Worker {
     private nextFiber: Fiber | null = null;
+    private wipRoot: Fiber | null = null;
 
     constructor() {
         this.loop = this.loop.bind(this)
         window.requestIdleCallback(this.loop);
     }
+
     public setNextFiber(fiber: Fiber) {
+        this.wipRoot = fiber;
         this.nextFiber = fiber;
     }
 
@@ -32,15 +30,33 @@ class Worker {
             shouldYield = deadline.timeRemaining() < 1;
         }
 
+        if (this.nextFiber === null && this.wipRoot !== null) {
+            this.commitRoot();
+        }
+
         window.requestIdleCallback(this.loop);
+    }
+
+    private commitRoot() {
+        if (this.wipRoot !== null) {
+            this.commitWork(this.wipRoot.child);
+        }
+        this.wipRoot = null;
+    }
+
+    private commitWork(fiber: Fiber | null) {
+        if (fiber === null) {
+            return;
+        }
+        const domParent = fiber.parent.dom;
+        domParent.appendChild(fiber.dom);
+        this.commitWork(fiber.child);
+        this.commitWork(fiber.sibling);
     }
 
     private static performUnitOfWork(fiber: Fiber): Fiber | null {
         if (fiber.dom === null) {
             fiber.dom = Worker.createDom(fiber);
-        }
-        if (fiber.parent) {
-            fiber.parent.dom.appendChild(fiber.dom);
         }
 
         return Worker.findNextFiber(fiber);
