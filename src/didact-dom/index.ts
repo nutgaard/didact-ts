@@ -3,7 +3,7 @@ import Worker from './worker';
 
 const worker = new Worker()
 export function render(element: Didact.Element, container: Node) {
-    worker.setNextFiber({
+    worker.setRootFiber({
         dom: container,
         type: element.type,
         parent: null,

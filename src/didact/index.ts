@@ -1,9 +1,10 @@
+export interface Props {
+    children: Element[];
+    [key: string]: any;
+}
 export interface Element {
     type: string;
-    props: {
-        children: Element[];
-        [key: string]: any;
-    };
+    props: Props;
 }
 export const TEXT_ELEMENT = 'TEXT_ELEMENT';
 export interface TextElement extends Element {
