@@ -5,7 +5,7 @@ const worker = new Worker()
 export function render(element: Didact.Element, container: Node) {
     worker.setRootFiber({
         dom: container,
-        type: element.type,
+        type: null,
         parent: null,
         child: null,
         sibling: null,
@@ -15,6 +15,11 @@ export function render(element: Didact.Element, container: Node) {
     });
 }
 
+export function useState<T>(initial: T | (() => T)) {
+    return worker.useState(initial)
+}
+
 export default {
-    render
+    render,
+    useState
 }

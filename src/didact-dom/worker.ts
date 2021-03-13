@@ -3,7 +3,7 @@ import {RequestIdleCallbackDeadline} from "../didact/types-polyfill";
 import {Props} from "../didact";
 import * as PropUtils from './prop-utils'
 
-
+export type Hook = any;
 export interface Fiber extends Didact.Element {
     dom: Node | null;
     parent: Fiber | null;
@@ -11,11 +11,15 @@ export interface Fiber extends Didact.Element {
     sibling: Fiber | null;
     alternate?: Fiber | null;
     effectTag?: 'UPDATE' | 'PLACEMENT' | 'DELETION'
+    hooks?: Hook[] | null;
 }
+type SetState<T> = (newValue : T | ((current: T) => T)) => void;
 
 class Worker {
     private nextFiber: Fiber | null = null;
     private wipRoot: Fiber | null = null;
+    private wipFiber: Fiber | null = null;
+    private hookIndex: number | null = null;
     private currentRoot: Fiber | null = null;
     private deletions: Fiber[] = [];
 
@@ -45,7 +49,7 @@ class Worker {
     }
 
     private commitRoot() {
-        this.deletions.forEach(this.commitWork);
+        this.deletions.forEach((deletion) => this.commitWork(deletion));
         if (this.wipRoot !== null) {
             this.commitWork(this.wipRoot.child);
             this.currentRoot = this.wipRoot;
@@ -57,16 +61,30 @@ class Worker {
         if (fiber === null) {
             return;
         }
-        const domParent = fiber.parent.dom;
+
+        let domParentFiber = fiber.parent;
+        while (domParentFiber.dom === null) {
+            domParentFiber = domParentFiber.parent;
+        }
+        const domParent = domParentFiber.dom;
+
         if (fiber.effectTag === 'PLACEMENT' && fiber.dom !== null) {
             domParent.appendChild(fiber.dom);
         } else if (fiber.effectTag === 'DELETION') {
-            domParent.removeChild(fiber.dom);
+            this.commitDeletion(fiber, domParent);
         } else if (fiber.effectTag === 'UPDATE' && fiber.dom !== null) {
             Worker.updateDom(fiber.dom, fiber.alternate.props, fiber.props)
         }
         this.commitWork(fiber.child);
         this.commitWork(fiber.sibling);
+    }
+
+    private commitDeletion(fiber: Fiber | null, node: Node) {
+        if (fiber.dom) {
+            node.removeChild(fiber.dom);
+        } else {
+            this.commitDeletion(fiber.child, node);
+        }
     }
 
     private static updateDom(dom: Node, prevProps: Props, nextProps: Props) {
@@ -109,15 +127,21 @@ class Worker {
     }
 
     private performUnitOfWork(fiber: Fiber): Fiber | null {
-        if (fiber.dom === null) {
-            fiber.dom = Worker.createDom(fiber);
+        if (fiber.type instanceof Function) {
+            this.wipFiber = fiber;
+            this.hookIndex = 0;
+            this.wipFiber.hooks = [];
+            const children = [fiber.type(fiber.props)];
+            return this.findNextFiber(fiber, children);
+        } else {
+            if (fiber.dom === null) {
+                fiber.dom = Worker.createDom(fiber);
+            }
+            return this.findNextFiber(fiber, fiber.props.children);
         }
-
-        return this.findNextFiber(fiber);
     }
 
-    private findNextFiber(fiber): Fiber | null {
-        const elements: Didact.Element[] = fiber.props.children;
+    private findNextFiber(fiber, elements: Didact.Element[]): Fiber | null {
         this.reconcileChildren(fiber, elements);
 
         if (fiber.child !== null) {
@@ -172,6 +196,11 @@ class Worker {
                 oldFiber.effectTag = 'DELETION';
                 this.deletions.push(oldFiber);
             }
+
+            if (oldFiber) {
+                // Denne var lett å overse i artiklen... :O Skaper rare bugs. :D
+                oldFiber = oldFiber.sibling
+            }
             if (index === 0) {
                 fiber.child = newFiber;
             }
@@ -183,19 +212,56 @@ class Worker {
         }
     }
 
-    static createDom(Fiber: Fiber) {
-        const isTextElement = Fiber.type === Didact.TEXT_ELEMENT;
-        const node = isTextElement
-            ? document.createTextNode('')
-            : document.createElement(Fiber.type);
+    // Hooks
+    useState<T>(initial: T | (() => T)): [T, SetState<T>] {
+        const oldHooks = this.wipFiber?.alternate?.hooks ?? [];
+        const oldHook: Hook | undefined = oldHooks[this.hookIndex];
+        const hook = {
+            state: oldHook ? oldHook.state : (typeof initial === 'function' ? initial() : initial),
+            queue: []
+        };
 
-        Object.keys(Fiber.props)
-            .filter((key) => key !== 'children')
-            .forEach((name) => {
-                node[name] = Fiber.props[name]
-            });
+        (oldHook?.queue ?? []).forEach((action) => {
+            hook.state = action(hook.state);
+        });
 
-        return node;
+        const setState: SetState<T> = (action) => {
+            hook.queue.push(action);
+            this.wipRoot = {
+                child: null, parent: null, sibling: null, type: null,
+                dom: this.currentRoot.dom,
+                props: this.currentRoot.props,
+                alternate: this.currentRoot
+            };
+            this.nextFiber = this.wipRoot;
+            this.deletions = [];
+        }
+
+        this.wipFiber.hooks.push(hook);
+        this.hookIndex++;
+
+        return [hook.state, setState];
+    }
+
+    static createDom(fiber: Fiber) {
+        const isTextElement = fiber.type === Didact.TEXT_ELEMENT;
+        if (typeof fiber.type === 'string') {
+            const node = isTextElement
+                ? document.createTextNode('')
+                : document.createElement(fiber.type);
+
+            Worker.updateDom(node, {}, fiber.props);
+
+            Object.keys(fiber.props)
+                .filter((key) => key !== 'children')
+                .forEach((name) => {
+                    node[name] = fiber.props[name]
+                });
+
+            return node;
+        } else {
+            throw Error(`Cannot create dom-node for non-host-fibers. Type: ${fiber.type}`);
+        }
     }
 }
 

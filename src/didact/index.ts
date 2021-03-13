@@ -1,9 +1,10 @@
+import Dom from './../didact-dom';
 export interface Props {
-    children: Element[];
+    children?: Element[];
     [key: string]: any;
 }
 export interface Element {
-    type: string;
+    type: null | string | ((props: any) => Element);
     props: Props;
 }
 export const TEXT_ELEMENT = 'TEXT_ELEMENT';
@@ -27,8 +28,8 @@ export function createElement(type: string, props: any, ...children: any[]): Ele
         props: {
             ...props,
             children: children.map((child) => {
-                if (typeof child === 'string') {
-                    return createTextElement(child)
+                if (typeof child === 'string' || typeof child === 'number') {
+                    return createTextElement(''+child)
                 } else {
                     return child;
                 }
@@ -37,6 +38,12 @@ export function createElement(type: string, props: any, ...children: any[]): Ele
     };
 }
 
+type Updater<T> = (newValue : T | ((current: T) => T)) => void;
+export function useState<T>(initial: T | (() => T)): [T, Updater<T>] {
+    return Dom.useState(initial);
+}
+
 export default {
-    createElement
+    createElement,
+    useState
 }
